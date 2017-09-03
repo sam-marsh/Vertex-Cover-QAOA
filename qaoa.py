@@ -144,6 +144,7 @@ def qaoa_quality(n, g, p, bop, cop):
     return ttotal / (ctotal * best(n, g))
 
 if __name__ == "__main__":
+    # quick test
     g = csc_matrix([[0, 1, 1, 1], [1, 0, 0, 0], [1, 0, 0, 1], [1, 0, 1, 0]])
     n = g.shape[0]
     p = 2

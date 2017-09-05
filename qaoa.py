@@ -2,6 +2,8 @@ from scipy.sparse import *
 from scipy.sparse.linalg import *
 from scipy.optimize import *
 from numpy import *
+from igraph import *
+from sys import argv
 
 def get_bit(z, i):
     """
@@ -14,10 +16,9 @@ def validate(n, g, z):
     checks if z (an integer) represents a valid vertex cover for graph adjacency
     matrix g, with n vertices
     """
-    for i in range(0, n):
-        for j in range(0, i):
-            if g[i, j] == 1 and get_bit(z, i) == 0 and get_bit(z, j) == 0:
-                return False
+    for e in g.es:
+        if get_bit(z, e.source) == 0 and get_bit(z, e.target) == 0:
+            return False
     return True
 
 def c(n, z):
@@ -141,11 +142,25 @@ def qaoa_quality(n, g, p, bop, cop):
         if validate(n, g, z) and curr >= -result.fun:
             ctotal += array[z, 0]
             ttotal += curr * array[z, 0]
-    return ttotal / (ctotal * best(n, g))
+    return (argmax(array), ttotal / (ctotal * best(n, g)))
+
+def random_graph(n, p):
+    """ a random graph for testing """
+    return Graph.Erdos_Renyi(n=n, p=p)
+
+def show_graph(g, ans):
+    """
+    opens external graph viewer
+    """
+    g.vs["color"] =  ['#ff0000' if get_bit(ans[0], v) else '#ffffff' for v in range(0, len(g.vs))]
+    plot(g, vertex_label=[v.index for v in g.vs])
 
 if __name__ == "__main__":
     # quick test
-    g = csc_matrix([[0, 1, 1, 1], [1, 0, 0, 0], [1, 0, 0, 1], [1, 0, 1, 0]])
-    n = g.shape[0]
+    n = int(argv[1])
+    ep = float(argv[2])
+    g = random_graph(n, ep)
     p = 2
-    print qaoa_quality(n, g, p, b_op(n, g), c_op(n))
+    ans = qaoa_quality(n, g, p, b_op(n, g), c_op(n))
+    print ans
+    show_graph(g, ans)

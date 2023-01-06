@@ -1,9 +1,12 @@
-from scipy.sparse import *
-from scipy.sparse.linalg import *
-from scipy.optimize import *
-from numpy import *
-from igraph import *
 from sys import argv
+
+import numpy as np
+import matplotlib.pyplot as plt
+import igraph as ig
+import scipy.sparse as sp
+
+from scipy.optimize import minimize
+
 
 def get_bit(z, i):
     """
@@ -11,7 +14,7 @@ def get_bit(z, i):
     """
     return (z >> i) & 0x1
 
-def validate(n, g, z):
+def validate(g, z):
     """
     checks if z (an integer) represents a valid vertex cover for graph adjacency
     matrix g, with n vertices
@@ -35,22 +38,22 @@ def c_op(n):
     """
     a 2^n by 2^n diagonal matrix with c(n, z) entries on the diagonal
     """
-    return diags([c(n, z) for z in range(0, 2**n)])
+    return sp.diags([c(n, z) for z in range(0, 2**n)])
 
 def uc(cop, gamma, v):
     """
     performs the matrix operation exp(-i gamma cop).v
     """
-    return expm_multiply(-1.0j * gamma * cop, v)
+    return sp.linalg.expm_multiply(-1.0j * gamma * cop, v)
 
 def istate(n):
     """
     constructs the initial state |1....1>
     """
     N = 2**n
-    v = lil_matrix((N, 1), dtype=dtype(cfloat))
+    v = sp.lil_matrix((N, 1), dtype=float)
     v[N-1, 0] = 1
-    return csc_matrix(v)
+    return sp.csc_matrix(v)
 
 def b_op(n, g):
     """
@@ -59,22 +62,22 @@ def b_op(n, g):
     (which has exactly n vertices)
     """
     N = 2**n
-    b = lil_matrix((N, N), dtype=dtype(int))
+    b = sp.lil_matrix((N, N), dtype=int)
     for x1 in range(0, N):
-        if not validate(n, g, x1):
+        if not validate(g, x1):
             continue
         for j in range(0, n):
             bit = 0x1 << j
             x2 = x1 ^ bit
-            if validate(n, g, x2):
+            if validate(g, x2):
                 b[x1, x2] = 1
-    return csc_matrix(b)
+    return sp.csc_matrix(b)
 
 def ub(bop, b, v):
     """
     performs the matrix operation exp(-i b bop).v
     """
-    return expm_multiply(-1.0j * b * bop, v)
+    return sp.linalg.expm_multiply(-1.0j * b * bop, v)
 
 def evolve(n, p, bs, gs, bop, cop):
     """
@@ -94,7 +97,7 @@ def probs(v):
     returns a 2^n by 1 vector of probabilities associated with each
     computational basis state for a quantum state v
     """
-    return real(v.multiply(v.conj()))
+    return np.real(v.multiply(v.conj()))
 
 def expectation(n, p, bs, gs, bop, cop):
     """
@@ -109,19 +112,19 @@ def best(n, g):
     brute-forces a solution to the vertex cover problem and returns the
     number of vertices in the optimal solution
     """
-    return max([c(n, z) if validate(n, g, z) else 0 for z in range(0, 2**n)])
+    return max([c(n, z) if validate(g, z) else 0 for z in range(0, 2**n)])
 
 def _f_expectation_for_optimizer(n, p, bop, cop):
     """
     essentially the objective function that is passed to the optimizer
     """
     def f(params):
-        bs = params[0:p]
+        bs = params[:p]
         gs = params[p:]
         return -expectation(n, p, bs, gs, bop, cop)
     return f
 
-def qaoa(n, g, p, bop, cop):
+def qaoa(n, p, bop, cop):
     """
     performs Nelder-Mead optimization to find the best set of parameters for the QAOA algorithm
     """
@@ -131,7 +134,7 @@ def qaoa_quality(n, g, p, bop, cop):
     """
     returns a quality from [0-1] of the result of the QAOA algorithm as compared to the optimal solution
     """
-    result = qaoa(n, g, p, bop, cop)
+    result = qaoa(n, p, bop, cop)
     bs = result.x[0:p]
     gs = result.x[p:]
     array = probs(evolve(n, p, bs, gs, bop, cop))
@@ -139,21 +142,22 @@ def qaoa_quality(n, g, p, bop, cop):
     ctotal = 0
     for z in range(0, 2**n):
         curr = c(n, z)
-        if validate(n, g, z) and curr >= -result.fun:
+        if validate(g, z) and curr >= -result.fun:
             ctotal += array[z, 0]
             ttotal += curr * array[z, 0]
-    return (argmax(array), ttotal / (ctotal * best(n, g)))
+    return (np.argmax(array), ttotal / (ctotal * best(n, g)))
 
 def random_graph(n, p):
     """ a random graph for testing """
-    return Graph.Erdos_Renyi(n=n, p=p)
+    return ig.Graph.Erdos_Renyi(n=n, p=p)
 
 def show_graph(g, ans):
     """
     opens external graph viewer
     """
     g.vs["color"] =  ['#ff0000' if get_bit(ans[0], v) else '#ffffff' for v in range(0, len(g.vs))]
-    plot(g, vertex_label=[v.index for v in g.vs])
+    ig.plot(g, vertex_label=[v.index for v in g.vs], target=plt.figure().gca())
+    plt.show()
 
 if __name__ == "__main__":
     # quick test
@@ -162,5 +166,5 @@ if __name__ == "__main__":
     g = random_graph(n, ep)
     p = 2
     ans = qaoa_quality(n, g, p, b_op(n, g), c_op(n))
-    print ans
+    print(ans)
     show_graph(g, ans)
